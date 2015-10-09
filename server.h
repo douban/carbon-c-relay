@@ -34,12 +34,14 @@ server *server_new(
 void server_add_secondaries(server *d, server **sec, size_t cnt);
 void server_set_failover(server *d);
 void server_set_instance(server *d, char *inst);
+int server_set_group_id(server *d);
 char server_send(server *s, const char *d, char force);
 void server_stop(server *s);
 void server_shutdown(server *s);
 const char *server_ip(server *s);
 unsigned short server_port(server *s);
 char *server_instance(server *s);
+int server_group_id(server *s);
 serv_ctype server_ctype(server *s);
 char server_failed(server *s);
 size_t server_get_ticks(server *s);

@@ -51,7 +51,7 @@ The route file syntax is as follows:
 # comments are allowed in any place and start with a hash (#)
 
 cluster <name>
-    <forward | any_of [useall] | failover | <carbon_ch | fnv1a_ch> [replication <count>]>
+    <forward | any_of [useall] | failover | fnv1a_h | <carbon_ch | fnv1a_ch> [replication <count>]>
         <host[:port][=instance] [proto <udp | tcp>]> ...
     ;
 cluster <name>

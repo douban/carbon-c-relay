@@ -247,7 +247,7 @@ int
 dispatch_addlistener_udp(int sock)
 {
 	int conn = dispatch_addconnection(sock);
-	
+
 	if (conn == -1)
 		return 1;
 
@@ -328,9 +328,9 @@ dispatch_connection(connection *conn, dispatcher *self)
 	/* try to read more data, if that succeeds, or we still have data
 	 * left in the buffer, try to process the buffer */
 	if (
-			(!conn->needmore && conn->buflen > 0) || 
+			(!conn->needmore && conn->buflen > 0) ||
 			(len = read(conn->sock,
-						conn->buf + conn->buflen, 
+						conn->buf + conn->buflen,
 						(sizeof(conn->buf) - 1) - conn->buflen)) > 0
 	   )
 	{
@@ -657,7 +657,9 @@ dispatch_reloadcomplete(dispatcher *d)
 inline size_t
 dispatch_get_ticks(dispatcher *self)
 {
-	return self->ticks;
+	size_t val = self->ticks;
+	self->ticks = 0;
+	return val;
 }
 
 /**
@@ -666,7 +668,9 @@ dispatch_get_ticks(dispatcher *self)
 inline size_t
 dispatch_get_metrics(dispatcher *self)
 {
-	return self->metrics;
+	size_t val = self->metrics;
+	self->metrics = 0;
+	return val;
 }
 
 /**

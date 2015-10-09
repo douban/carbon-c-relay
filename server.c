@@ -39,6 +39,7 @@ struct _server {
 	const char *ip;
 	unsigned short port;
 	char *instance;
+	int group_id;  /* Used when cl->type == FNV1A_H */
 	struct addrinfo *saddr;
 	int fd;
 	queue *queue;
@@ -473,12 +474,23 @@ server_set_failover(server *self)
 }
 
 /**
- * Sets instance name only used for carbon_ch cluster type.
+ * Sets instance name used for <carbon_ch|fnv1a_ch|fnv1a_h> cluster type.
  */
 void
 server_set_instance(server *self, char *instance)
 {
 	self->instance = strdup(instance);
+}
+
+/**
+ * Sets group_id only used for fnv1a_h cluster type.
+ */
+int
+server_set_group_id(server *self)
+{
+	char *endp = NULL;
+	self->group_id = strtol(self->instance, &endp, 10);
+	return *endp == '\0';
 }
 
 /**
@@ -537,7 +549,7 @@ server_shutdown(server *s)
 	size_t failures;
 	size_t inqueue;
 	int err;
-	
+
 	if (s->tid == 0)
 		return;
 
@@ -625,6 +637,14 @@ server_instance(server *s)
 }
 
 /**
+ * Returns the group_id associated with this server.
+ */
+int
+server_group_id(server *s) {
+	return s->group_id;
+}
+
+/**
  * Returns the connection type of this server.
  */
 inline serv_ctype
@@ -654,7 +674,9 @@ server_get_ticks(server *s)
 {
 	if (s == NULL)
 		return 0;
-	return s->ticks;
+	size_t val = s->ticks;
+	s->ticks = 0;
+	return val;
 }
 
 /**
@@ -665,7 +687,9 @@ server_get_metrics(server *s)
 {
 	if (s == NULL)
 		return 0;
-	return s->metrics;
+	size_t val = s->metrics;
+	s->metrics = 0;
+	return val;
 }
 
 /**
@@ -676,7 +700,9 @@ server_get_dropped(server *s)
 {
 	if (s == NULL)
 		return 0;
-	return s->dropped;
+	size_t val = s->dropped;
+	s->dropped = 0;
+	return val;
 }
 
 /**
@@ -689,7 +715,9 @@ server_get_stalls(server *s)
 {
 	if (s == NULL)
 		return 0;
-	return s->stalls;
+	size_t val = s->stalls;
+	s->stalls = 0;
+	return val;
 }
 
 /**
