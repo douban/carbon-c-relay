@@ -43,7 +43,8 @@ enum clusttype {
 	FNV1A_CH,   /* FNV1a-based consistent-hash */
 	ANYOF,      /* FNV1a-based hash, but with backup by others */
 	FAILOVER,   /* ordered attempt delivery list */
-	FNV1A_H,
+	FNV1A_H,    /* FNV1a-based hash, with groups */
+	FNV1A_SH,   /* FNV1a-based signed hash, with groups */
 	AGGREGATION,
 	REWRITE
 };
@@ -218,7 +219,7 @@ determine_if_regex(route *r, char *pat, int flags)
  * Config file supports the following:
  *
  * cluster (name)
- *     (forward | any_of [useall] | failover | fnv1a_h | (carbon|fnv1a)_ch [replication (count)])
+ *     (forward | any_of [useall] | failover | fnv1a_h | fnv1a_sh | (carbon|fnv1a)_ch [replication (count)])
  *         (ip:port[=instance] [proto (tcp | udp)] ...)
  *     ;
  * cluster (name)
@@ -402,17 +403,20 @@ router_readconfig(cluster **clret, route **rret,
 				}
 				cl->type = FAILOVER;
 				cl->members.anyof = NULL;
-			} else if (strncmp(p, "fnv1a_h", 7) == 0 && isspace(*(p + 7))) {
-				p += 8;
+			} else if ((strncmp(p, "fnv1a_h", 7) == 0 && isspace(*(p + 7))) ||
+						(strncmp(p, "fnv1a_sh", 8) == 0 && isspace(*(p + 8)))) {
+
+				enum clusttype htype = *(p + 6) == 'h' ? FNV1A_H : FNV1A_SH;
+				p += htype == FNV1A_H ? 8 : 9;
 
 				for (; *p != '\0' && isspace(*p); p++)
 					;
 				if ((cl = cl->next = malloc(sizeof(cluster))) == NULL) {
-					logerr("malloc failed in cluster fnv1a_h\n");
+					logerr("malloc failed in cluster %s\n", name);
 					free(buf);
 					return 0;
 				}
-				cl->type = FNV1A_H;
+				cl->type = htype;
 				cl->members.hashgroup = NULL;
 			} else if (strncmp(p, "file", 4) == 0 && isspace(*(p + 4))) {
 				p += 5;
@@ -481,7 +485,10 @@ router_readconfig(cluster **clret, route **rret,
 				termchr = *p;
 				*p = '\0';
 
-				if (cl->type == CARBON_CH || cl->type == FNV1A_CH || cl->type == FNV1A_H) {
+				if (cl->type == CARBON_CH ||
+						cl->type == FNV1A_CH ||
+						cl->type == FNV1A_H ||
+						cl->type == FNV1A_SH) {
 					if (inst != NULL) {
 						*inst = '\0';
 						p = inst++;
@@ -628,8 +635,8 @@ router_readconfig(cluster **clret, route **rret,
 						return 0;
 					}
 
-					if ((cl->type == CARBON_CH || cl->type == FNV1A_CH || cl->type == FNV1A_H)
-								&& inst != NULL)
+					if ((cl->type == CARBON_CH || cl->type == FNV1A_CH ||
+						 cl->type == FNV1A_H || cl->type == FNV1A_SH) && inst != NULL)
 						server_set_instance(newserver, inst);
 
 					if (cl->type == CARBON_CH || cl->type == FNV1A_CH) {
@@ -663,6 +670,7 @@ router_readconfig(cluster **clret, route **rret,
 							cl->type == ANYOF ||
 							cl->type == FAILOVER ||
 							cl->type == FNV1A_H ||
+							cl->type == FNV1A_SH ||
 							cl->type == FILELOG ||
 							cl->type == FILELOGIP)
 					{
@@ -677,6 +685,7 @@ router_readconfig(cluster **clret, route **rret,
 									cl->type == ANYOF ? "any_of" :
 									cl->type == FAILOVER ? "failover" :
 									cl->type == FNV1A_H ? "fnv1a_h" :
+									cl->type == FNV1A_SH ? "fnv1a_sh" :
 									"file",
 									ip);
 							free(cl);
@@ -700,7 +709,7 @@ router_readconfig(cluster **clret, route **rret,
 								cl->members.anyof->count++;
 							}
 						}
-						if (cl->type == FNV1A_H){
+						if (cl->type == FNV1A_H || cl->type == FNV1A_SH){
 							if (cl->members.hashgroup == NULL) {
 								cl->members.hashgroup = malloc(sizeof(servergroup));
 								cl->members.hashgroup->groups = NULL;
@@ -730,7 +739,7 @@ router_readconfig(cluster **clret, route **rret,
 					if (cl->type == FAILOVER)
 						server_set_failover(w->server);
 				}
-			} else if (cl->type == FNV1A_H) {
+			} else if (cl->type == FNV1A_H || cl->type == FNV1A_SH) {
 				for (w = cl->members.hashgroup->list; w != NULL; w = w->next) {
 					if (!server_set_group_id(w->server)) {
 						logerr("group id error for %s:%d=%s\n",
@@ -1538,7 +1547,7 @@ router_getservers(cluster *clusters)
 		} else if (c->type == ANYOF || c->type == FAILOVER) {
 			for (s = c->members.anyof->list; s != NULL; s = s->next)
 				add_server(s->server);
-		} else if (c->type == FNV1A_H) {
+		} else if (c->type == FNV1A_H || c->type == FNV1A_SH) {
 			for (i = 0; i < c->members.hashgroup->group_count; i++) {
 				s = c->members.hashgroup->groups[i];
 				while (s != NULL) {
@@ -1591,8 +1600,8 @@ router_printconfig(FILE *f, char mode, cluster *clusters, route *routes)
 			for (s = c->members.anyof->list; s != NULL; s = s->next)
 				fprintf(f, "        %s:%d%s\n",
 						server_ip(s->server), server_port(s->server), PPROTO);
-		} else if (c->type == FNV1A_H) {
-			fprintf(f, "    %s\n", "fnv1a_h");
+		} else if (c->type == FNV1A_H || c->type == FNV1A_SH) {
+			fprintf(f, "    %s\n", c->type == FNV1A_H ? "fnv1a_h" : "fnv1a_sh");
 			for (i = 0; i < c->members.hashgroup->group_count; i++) {
 				s = c->members.hashgroup->groups[i];
 				while (s != NULL) {
@@ -1742,6 +1751,7 @@ router_free(cluster *clusters, route *routes)
 					free(clusters->members.anyof->servers);
 				break;
 			case FNV1A_H:
+			case FNV1A_SH:
 				for (i = 0; i < clusters->members.hashgroup->group_count; i++) {
 					s = clusters->members.hashgroup->groups[i];
 					while (s != NULL) {
@@ -1938,6 +1948,37 @@ router_rewrite_metric(
 	return 0;  /* we couldn't copy everything */
 }
 
+static inline unsigned short
+fnv1a_get_pos(
+		enum clusttype type,
+		unsigned short pos_count,
+		const char *metric,
+		const char *firstspace)
+{
+	if (type == FNV1A_H) {
+		return (unsigned short)(fnv1a_hash32(metric, firstspace) % pos_count);
+	} else {
+		/* FNV1A_SH
+		 *
+		 * The modulo operation (%), has different result in C and Python (
+		 * Python's Integer Division Floors by Guido van Rossum).
+		 *
+		 * We use the following formula for 'x % y':
+		 *     x % y =  x - y * floor(x/y), for y != 0
+		 * The above formula is copyed from Concrete Mathmatics (formula 3.21),
+		 * with a slight modification. It's compatible with Python's implementation.
+		 *
+		 * The reason we use FNV1A_SH is that our internal Python implementation
+		 * of `fvn1a.get_hash_bugfree` is a signed integer, and I have used it in
+		 * original carbon-relay. If you don't have this problem, just use FNV1A_H.
+		 */
+
+		int hash = fnv1a_signed_hash32(metric, firstspace);
+		int pos = hash % pos_count;
+		return pos >= 0 ? (unsigned short)pos : (unsigned short)(pos_count + pos);
+	}
+}
+
 static char
 router_route_intern(
 		char *blackholed,
@@ -2059,11 +2100,15 @@ router_route_intern(
 					ret[(*curlen)++].metric = strdup(metric);
 					*blackholed = 0;
 				}	break;
-				case FNV1A_H: {
-					unsigned int hash = fnv1a_hash32(metric, firstspace);
-					int group_count = w->dest->members.hashgroup->group_count;
+				case FNV1A_H:
+				case FNV1A_SH: {
+					unsigned short group_id = fnv1a_get_pos(
+						w->dest->type,
+						w->dest->members.hashgroup->group_count,
+						metric,
+						firstspace);
 					servers *s;
-					for (s = w->dest->members.hashgroup->groups[hash % group_count];
+					for (s = w->dest->members.hashgroup->groups[group_id];
 						 s != NULL;
 						 s = s->next) {
 						failif(retsize, *curlen + 1);
