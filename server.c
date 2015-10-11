@@ -39,7 +39,7 @@ struct _server {
 	const char *ip;
 	unsigned short port;
 	char *instance;
-	int group_id;  /* Used when cl->type == FNV1A_H */
+	int group_id;  /* Used when cl->type in (FNV1A_H, FNV1A_SH) */
 	struct addrinfo *saddr;
 	int fd;
 	queue *queue;
@@ -474,7 +474,7 @@ server_set_failover(server *self)
 }
 
 /**
- * Sets instance name used for <carbon_ch|fnv1a_ch|fnv1a_h> cluster type.
+ * Sets instance name used for <carbon_ch|fnv1a_ch|fnv1a_h|fnv1a_sh> cluster type.
  */
 void
 server_set_instance(server *self, char *instance)
@@ -483,7 +483,7 @@ server_set_instance(server *self, char *instance)
 }
 
 /**
- * Sets group_id only used for fnv1a_h cluster type.
+ * Sets group_id used for <fnv1a_h|fnv1a_sh> cluster type.
  */
 int
 server_set_group_id(server *self)

@@ -15,6 +15,16 @@ fnv1a_hash32(const char *key, const char *end)
 	return hash;
 }
 
+
+/**
+ * Computes the hash for key in a 32-bit signed integer space.
+ */
+int
+fnv1a_signed_hash32(const char *key, const char *end) {
+    return (int)fnv1a_hash32(key, end);
+}
+
+
 /**
  * Computes the hash position for key in a 16-bit unsigned integer
  * space.  Returns a number between 0 and 65535 based on the FNV1a hash
